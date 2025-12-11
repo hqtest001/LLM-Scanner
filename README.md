@@ -127,7 +127,7 @@ python main.py
 
 ### 方式二：直接下载EXE（Windows）
 
-前往 [Releases](https://github.com/yourusername/LLMScanner/releases) 下载最新版本的 `LLM_Scanner_V1.0.exe`
+前往 [Releases](https://github.com/hqtest001/LLM-Scanner/releases) 下载最新版本的 `LLM_Scanner_V1.0.exe`
 
 ### 方式三：自行打包
 
@@ -234,3 +234,4 @@ LLMScanner/
 <p align="center">
   Made with ❤️ for Security Research
 </p>
+
