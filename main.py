@@ -46,13 +46,13 @@ class ThemeConfig:
         "sg_theme": "DarkBlack1",
         "accent": "#00BFFF",
         "button": "#1E90FF",
-        "button_text": "#c8c8c8",
+        "button_text": "#d4d4d4",
         "button_disabled": "#2d2d2d",
         "log_bg": "#0d0d0d",
-        "log_text": "#c8c8c8",
-        "text_hint": "#888888",
-        "text_primary": "#c8c8c8",
-        "text_secondary": "#888888",
+        "log_text": "#d4d4d4",
+        "text_hint": "#9a9a9a",
+        "text_primary": "#d4d4d4",
+        "text_secondary": "#9a9a9a",
         "bg_dark": "#0d0d0d",
         "bg_medium": "#1a1a1a",
         "bg_light": "#2d2d2d",
@@ -61,10 +61,10 @@ class ThemeConfig:
         "table_header_bg": "#2d2d2d",
         "table_alt_row": "#1a1a1a",
         "color_map": {
-            "info": "#c8c8c8",
-            "success": "#50C878",
-            "warning": "#E6C35C", 
-            "error": "#E57373"
+            "info": "#d4d4d4",
+            "success": "#00ff00",
+            "warning": "yellow", 
+            "error": "#ff6666"
         }
     }
 
@@ -209,7 +209,9 @@ def create_window(theme_name="light"):
             [sg.Table(values=[], headings=result_headers, key='-RESULTS-',
                      auto_size_columns=False, col_widths=[16, 9, 16, 11, 33],
                      num_rows=8, justification='left', enable_events=True,
-                     select_mode=sg.TABLE_SELECT_MODE_BROWSE)],
+                     select_mode=sg.TABLE_SELECT_MODE_BROWSE,
+                     alternating_row_color='#f0f0f0',
+                     selected_row_colors=('white', BUTTON))],
             [sg.Button('查看详情', key='-DETAILS-', size=(10, 1)),
              sg.Button('导出结果', key='-EXPORT-', size=(10, 1)),
              sg.Button('清除结果', key='-CLEAR-', size=(10, 1))]
@@ -219,7 +221,9 @@ def create_window(theme_name="light"):
         services_frame = sg.Frame('支持检测的服务 (11种)', [
             [sg.Table(values=services_data, headings=['服务名称', '端口', '检测路径'],
                      key='-SERVICES-', auto_size_columns=False,
-                     col_widths=[18, 15, 25], num_rows=5, justification='left')]
+                     col_widths=[18, 15, 25], num_rows=5, justification='left',
+                     alternating_row_color='#f0f0f0',
+                     selected_row_colors=('white', BUTTON))]
         ])
         
         layout = [
@@ -239,7 +243,7 @@ def create_window(theme_name="light"):
     
     # 暗黑主题下设置输入框光标颜色与主体字体一致
     if is_dark:
-        window['-TARGET-'].Widget.config(insertbackground='#c8c8c8')
+        window['-TARGET-'].Widget.config(insertbackground='#d4d4d4')
     
     return window
 
@@ -253,6 +257,7 @@ def main():
     scanner = LLMScanner()
     scan_thread = None
     results_data = []
+    log_history = []  # 保存日志历史 [(text, level), ...]
     
     color_map = theme_config["color_map"]
     default_color = theme_config["log_text"]
@@ -283,6 +288,17 @@ def main():
         
         # 主题切换
         if event == '-THEME-':
+            # 保存当前数据
+            saved_target = values['-TARGET-']
+            saved_single = values['-SINGLE-']
+            saved_range = values['-RANGE-']
+            saved_cidr = values['-CIDR-']
+            saved_full_scan = values['-FULL_SCAN-']
+            saved_log_history = log_history.copy()
+            saved_progress = scanner.progress
+            saved_results = results_data.copy() if results_data else []
+            saved_scanning = scanner.scanning
+            
             window.close()
             if current_theme == "light":
                 current_theme = "dark"
@@ -295,6 +311,26 @@ def main():
             default_color = theme_config["log_text"]
             
             window = create_window(current_theme)
+            
+            # 恢复数据
+            window['-TARGET-'].update(saved_target)
+            window['-SINGLE-'].update(saved_single)
+            window['-RANGE-'].update(saved_range)
+            window['-CIDR-'].update(saved_cidr)
+            window['-FULL_SCAN-'].update(saved_full_scan)
+            # 重新渲染日志（带颜色）
+            log_history = saved_log_history
+            for log_text, log_level in log_history:
+                window['-LOG-'].print(log_text, text_color=color_map.get(log_level, default_color))
+            window['-PROGRESS-'].update(saved_progress)
+            window['-PROGRESS_TEXT-'].update(f'进度: {saved_progress}%')
+            if saved_results:
+                results_data = saved_results
+                table_data = [[r['ip'], r['port'], r['service'], r['status'], r['vulnerability']] for r in saved_results]
+                window['-RESULTS-'].update(values=table_data)
+            if saved_scanning:
+                window['-START-'].update(disabled=True)
+                window['-STOP-'].update(disabled=False)
             continue
             
         # 处理消息队列
@@ -302,6 +338,7 @@ def main():
             try:
                 msg_type, msg_data, msg_level = scanner.msg_queue.get_nowait()
                 if msg_type == "log":
+                    log_history.append((msg_data, msg_level))  # 保存日志历史
                     window['-LOG-'].print(msg_data, text_color=color_map.get(msg_level, default_color))
                 elif msg_type == "progress":
                     window['-PROGRESS-'].update(msg_data)
@@ -328,6 +365,7 @@ def main():
             window['-PROGRESS-'].update(0)
             window['-PROGRESS_TEXT-'].update('进度: 0%')
             window['-LOG-'].update('')
+            log_history.clear()  # 清空日志历史
             results_data = []
             window['-RESULTS-'].update(values=[])
             scan_thread = threading.Thread(target=run_scan, daemon=True)
@@ -338,6 +376,7 @@ def main():
             
         if event == '-CLEAR_LOG-':
             window['-LOG-'].update('')
+            log_history.clear()  # 清空日志历史
             
         if event == '-CLEAR-':
             results_data = []
@@ -354,7 +393,9 @@ def main():
                     
         if event == '-EXPORT-':
             if results_data:
-                filename = sg.popup_get_file('保存结果', save_as=True, default_extension='.json', file_types=(('JSON', '*.json'),))
+                # 使用系统原生对话框，两个主题效果一致
+                filename = sg.popup_get_file('保存结果', save_as=True, default_extension='.json', 
+                                             file_types=(('JSON', '*.json'),), no_window=True)
                 if filename:
                     with open(filename, 'w', encoding='utf-8') as f:
                         json.dump(results_data, f, ensure_ascii=False, indent=2)
